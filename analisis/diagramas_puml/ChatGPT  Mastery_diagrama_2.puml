@@ -1,0 +1,10 @@
+@startuml
+
+start "Usuario"
+:escanea QR code
+:API Gateway receives request
+:validates JWT token
+:processes request for prompt/recurso
+:Microservice Busqueda retrieves result from Catalog DB
+:Video CDN serves video content to user
+stop

@@ -1,0 +1,36 @@
+Extraer de la imagen adjunta como ingeniero de software ,en forma detallada
+        1. **COMPONENTES**: Identifica todos los componentes (DB, Services, APIs, etc.) Inclluir descripcion detallada y diagramas en fomato puml.
+
+        2. **RELACIONES**: Describe flujos de datos y dependencias.Inclluir descripcion detallada y diagramas en fomato puml
+
+        3. **PATRONES**: Microservicios, Monolito, Serverless, CQRS, etc.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+        4. **TECNOLOGÍAS**: Bases de datos, colas, frameworks detectados.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+        5. **ESCALABILIDAD**: Puntos de escalabilidad identificados.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+        6. **SEGURIDAD**: Medidas de seguridad visibles.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+        7. **DEPLOYMENT**: On-premise, Cloud, Kubernetes, etc.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+8 .Diagrama de flujo formato puml.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+9. diagrama secuencia formato puml.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+10.Diagrama de ais formato puml.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+11. Diagrama de componentes formato puml.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+12.Diagrama de desplieguue en formato puml.
+Inclluir descripcion detallada y diagramas en fomato puml
+
+

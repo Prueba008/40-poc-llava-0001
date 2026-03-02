@@ -1,0 +1,9 @@
+@startuml
+
+Bases de Datos Vectoriales para Prompts --|> Microservice Busqueda
+Microservice Busqueda --> CATALOG_DB (NoSQL)
+CATALOG_DB (NoSQL) --> API Gateway
+API Gateway --> VIDEO_CDN
+VIDEO_CDN --> USER
+
+@enduml

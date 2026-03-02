@@ -1,0 +1,16 @@
+@startuml
+
+API_GATEWAY --|> Kubernetes Master
+K8S_MASTER --|> Node 1
+--|-> Node 2
+--|-> Node 3
+
+subgraph CATALOG_DB (NoSQL)
+:runs on Kubernetes
+end
+
+subgraph VIDEO_CDN
+:runs on Kubernetes
+end
+
+@enduml
