@@ -1,29 +1,7 @@
 @startuml
 
-subgraph QR Code Scanning
-:escanea QR code
-end
+:api_gateway:
 
-subgraph API Gateway
-:auth
-:process request
-end
-
-API_GATEWAY --|> MICROSERVICE_BUSQUEDA
-MICROSERVICE_BUSQUEDA --|> CATALOG_DB
-CATALOG_DB --|> VIDEO_CDN
-VIDEO_CDN --> USER
-
-subgraph Microservice Busqueda
-:process search request
-end
-
-subgraph Catalog DB (NoSQL)
-:stores catalog information
-end
-
-subgraph Video CDN
-:serves video content
-end
+* Servidor para gestionar todas las solicitudes que ingresan al servicio.
 
 @enduml

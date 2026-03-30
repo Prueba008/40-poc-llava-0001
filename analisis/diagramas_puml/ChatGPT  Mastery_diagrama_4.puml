@@ -1,9 +1,7 @@
 @startuml
 
-Bases de Datos Vectoriales para Prompts --|> Microservice Busqueda
-Microservice Busqueda --> CATALOG_DB (NoSQL)
-CATALOG_DB (NoSQL) --> API Gateway
-API Gateway --> VIDEO_CDN
-VIDEO_CDN --> USER
+:cms_for_videos:
+
+* CMS que gestiona los recursos multimedia del curso, como videos o imágenes.
 
 @enduml

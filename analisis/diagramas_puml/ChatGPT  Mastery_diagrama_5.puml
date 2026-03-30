@@ -1,0 +1,7 @@
+@startuml
+
+:recommendation_engine:
+
+* Motor de recomendación que sugiere contenido relacionado con el contexto del usuario actual.
+
+@enduml

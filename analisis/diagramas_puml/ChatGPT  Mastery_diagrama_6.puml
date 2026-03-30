@@ -1,0 +1,7 @@
+@startuml
+
+:no_sql_for_catalog:
+
+* NoSQL que almacena y gestiona información estructurada que no se basa en un esquema fijo, como el catálogo del curso o los recursos multimedia.
+
+@enduml
