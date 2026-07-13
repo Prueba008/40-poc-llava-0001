@@ -8,7 +8,9 @@ Script para renderizar todos los archivos PlantUML (.puml) a PNG.
 import os
 import glob
 from pathlib import Path
-from plantuml import PlantUML
+import requests
+import zlib
+import base64
 
 # ================= CONFIGURACIÓN =================
 PUML_DIR = "./analisis/diagramas_puml"
@@ -17,6 +19,13 @@ PLANTUML_SERVER = "http://www.plantuml.com/plantuml/png/"
 # =================================================
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+def encode_puml(puml_content: str) -> str:
+    """Codifica contenido PlantUML usando el algoritmo de PlantUML."""
+    # Comprimir con zlib
+    zlibbed = zlib.compress(puml_content.encode('utf-8'))
+    # Codificar en base64
+    return base64.b64encode(zlibbed).decode('utf-8')
 
 def renderizar_puml_a_png(puml_path: str, output_dir: str) -> bool:
     """
@@ -30,9 +39,6 @@ def renderizar_puml_a_png(puml_path: str, output_dir: str) -> bool:
         True si se renderizó correctamente
     """
     try:
-        # Inicializar cliente PlantUML
-        plantuml = PlantUML(url=PLANTUML_SERVER)
-        
         # Leer archivo PlantUML
         with open(puml_path, 'r', encoding='utf-8') as f:
             puml_content = f.read()
@@ -41,8 +47,16 @@ def renderizar_puml_a_png(puml_path: str, output_dir: str) -> bool:
         base_name = Path(puml_path).stem
         output_path = os.path.join(output_dir, f"{base_name}.png")
         
-        # Renderizar a PNG
-        plantuml.processes_file(puml_path, output_path)
+        # Codificar y hacer request al servidor
+        encoded = encode_puml(puml_content)
+        url = f"{PLANTUML_SERVER}{encoded}"
+        
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        # Guardar PNG
+        with open(output_path, 'wb') as f:
+            f.write(response.content)
         
         print(f"✅ Renderizado: {base_name}.png")
         return True
