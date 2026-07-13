@@ -1,0 +1,7 @@
+@startuml
+
+:cms_for_videos:
+
+* CMS que gestiona los recursos multimedia del curso, como videos o imágenes.
+
+@enduml
