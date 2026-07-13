@@ -1,9 +1,3 @@
-# %%
-# Ejecuta esto en una celda
-# %pip freeze > requirements.txt
-# %pip install docling langchain-ollama llava chromadb tqdm langchain-text-splitters
-# %ollama pull llava
-# %%
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -141,4 +135,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-# %%

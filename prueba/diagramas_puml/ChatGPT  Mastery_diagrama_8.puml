@@ -1,0 +1,7 @@
+@startuml
+
+:infrastructure_kubernetes:
+
+* Infraestructura de Kubernetes que se despliega en una nube pública, como AWS o GCP.
+
+@enduml
