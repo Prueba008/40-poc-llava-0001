@@ -148,7 +148,6 @@ El script `generar_pdf.py` crea un documento PDF a partir del análisis en markd
 ```bash
 python generar_pdf.py
 ```
-
 Este script:
 - Lee `./analisis/analisis_completo.md`
 - Parsea las secciones markdown
