@@ -6,6 +6,7 @@ Script para generar un documento PDF con descripciones de procesos y diagramas.
 """
 
 import os
+import logging
 from pathlib import Path
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -18,10 +19,20 @@ from reportlab.lib.colors import HexColor
 MARKDOWN_FILE = "./analisis/analisis_completo.md"
 PNG_DIR = "./analisis/diagramas_png"
 OUTPUT_PDF = "./documentacion/arquitectura_chatgpt_mastery.pdf"
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 # =================================================
 
 # Crear directorio de salida si no existe
-os.makedirs(os.path.dirname(OUTPUT_PDF), exist_ok=True)
+output_dir = os.path.dirname(OUTPUT_PDF)
+if output_dir:
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Error al crear directorio {output_dir}: {e}")
+        raise
 
 def parse_markdown_to_text(md_content: str) -> list:
     """
@@ -86,9 +97,17 @@ def get_image_for_section(section_text: str, png_dir: str) -> str:
 def create_pdf():
     """Genera el documento PDF."""
     
-    # Leer archivo Markdown
-    with open(MARKDOWN_FILE, 'r', encoding='utf-8') as f:
-        md_content = f.read()
+    # Validar y leer archivo Markdown
+    if not os.path.exists(MARKDOWN_FILE):
+        logger.error(f"Archivo markdown no encontrado: {MARKDOWN_FILE}")
+        return False
+    
+    try:
+        with open(MARKDOWN_FILE, 'r', encoding='utf-8') as f:
+            md_content = f.read()
+    except IOError as e:
+        logger.error(f"Error al leer archivo {MARKDOWN_FILE}: {e}")
+        return False
     
     # Crear documento PDF
     doc = SimpleDocTemplate(

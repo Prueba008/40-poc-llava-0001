@@ -9,12 +9,17 @@ Implementa almacenamiento, búsqueda y recuperación de prompts.
 import os
 import sqlite3
 import json
+import logging
 from typing import List, Dict, Optional
 from pathlib import Path
 from datetime import datetime
 
 # ================= CONFIGURACIÓN =================
 DB_PATH = "./data/prompts.db"
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 # =================================================
 
 class BaseVectorial:
@@ -28,7 +33,14 @@ class BaseVectorial:
             db_path: Ruta del archivo de base de datos
         """
         self.db_path = db_path
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        # Validar y crear directorio de forma segura
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            try:
+                os.makedirs(db_dir, exist_ok=True)
+            except OSError as e:
+                logger.error(f"Error al crear directorio {db_dir}: {e}")
+                raise
         
         # Crear conexión y tablas
         self._init_db()
@@ -81,6 +93,32 @@ class BaseVectorial:
             
             conn.commit()
     
+    def _get_or_create_tag(self, cursor: sqlite3.Cursor, tag: str) -> int:
+        """
+        Obtiene o crea un tag de forma atómica.
+        
+        Args:
+            cursor: Cursor de base de datos
+            tag: Nombre del tag
+            
+        Returns:
+            ID del tag
+        """
+        # Intentar insertar con manejo de conflicto
+        cursor.execute("""
+            INSERT INTO tags (name) VALUES (?)
+            ON CONFLICT(name) DO UPDATE SET name = name
+            RETURNING id
+        """, (tag,))
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+        
+        # Fallback para SQLite sin RETURNING
+        cursor.execute("SELECT id FROM tags WHERE name = ?", (tag,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+    
     def add_prompt(
         self,
         prompt_id: str,
@@ -114,20 +152,14 @@ class BaseVectorial:
             # Procesar tags
             if tags:
                 for tag in tags:
-                    # Insertar tag si no existe
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO tags (name) VALUES (?)
-                    """, (tag,))
-                    
-                    # Obtener ID del tag
-                    cursor.execute("SELECT id FROM tags WHERE name = ?", (tag,))
-                    tag_id = cursor.fetchone()[0]
-                    
-                    # Relacionar prompt con tag
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id)
-                        VALUES (?, ?)
-                    """, (prompt_id, tag_id))
+                    # Obtener o crear tag de forma atómica
+                    tag_id = self._get_or_create_tag(cursor, tag)
+                    if tag_id:
+                        # Relacionar prompt con tag
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id)
+                            VALUES (?, ?)
+                        """, (prompt_id, tag_id))
             
             conn.commit()
     
@@ -173,8 +205,8 @@ class BaseVectorial:
             
             # Filtro por categoría
             if category:
-                sql += " AND p.metadata LIKE ?"
-                params.append(f'%category%{category}%')
+                sql += " AND json_extract(p.metadata, '$.categoria') = ?"
+                params.append(category)
             
             # Filtro por tags
             if tags:
@@ -182,7 +214,8 @@ class BaseVectorial:
                 sql += f" AND t.name IN ({tag_placeholders})"
                 params.extend(tags)
             
-            sql += f" LIMIT {n_results}"
+            sql += " LIMIT ?"
+            params.append(n_results)
             
             cursor.execute(sql, params)
             rows = cursor.fetchall()
@@ -261,7 +294,8 @@ class BaseVectorial:
                 cursor.execute("DELETE FROM prompts WHERE id = ?", (prompt_id,))
                 conn.commit()
                 return cursor.rowcount > 0
-        except Exception:
+        except sqlite3.Error as e:
+            logger.error(f"Error al eliminar prompt {prompt_id}: {e}")
             return False
     
     def update_prompt(
@@ -316,21 +350,18 @@ class BaseVectorial:
                     
                     # Agregar nuevos tags
                     for tag in tags:
-                        cursor.execute("""
-                            INSERT OR IGNORE INTO tags (name) VALUES (?)
-                        """, (tag,))
-                        
-                        cursor.execute("SELECT id FROM tags WHERE name = ?", (tag,))
-                        tag_id = cursor.fetchone()[0]
-                        
-                        cursor.execute("""
-                            INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id)
-                            VALUES (?, ?)
-                        """, (prompt_id, tag_id))
+                        # Obtener o crear tag de forma atómica
+                        tag_id = self._get_or_create_tag(cursor, tag)
+                        if tag_id:
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO prompt_tags (prompt_id, tag_id)
+                                VALUES (?, ?)
+                            """, (prompt_id, tag_id))
                 
                 conn.commit()
                 return True
-        except Exception:
+        except sqlite3.Error as e:
+            logger.error(f"Error al actualizar prompt {prompt_id}: {e}")
             return False
     
     def list_all_prompts(self, limit: Optional[int] = None) -> List[Dict]:
@@ -348,10 +379,12 @@ class BaseVectorial:
             cursor = conn.cursor()
             
             sql = "SELECT id, text, metadata, created_at, updated_at FROM prompts"
+            params = []
             if limit:
-                sql += f" LIMIT {limit}"
+                sql += " LIMIT ?"
+                params.append(limit)
             
-            cursor.execute(sql)
+            cursor.execute(sql, params)
             rows = cursor.fetchall()
             
             results = []

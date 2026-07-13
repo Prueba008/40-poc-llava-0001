@@ -7,6 +7,8 @@ Script para renderizar todos los archivos PlantUML (.puml) a PNG.
 
 import os
 import glob
+import logging
+import time
 from pathlib import Path
 import requests
 import zlib
@@ -15,7 +17,14 @@ import base64
 # ================= CONFIGURACIÓN =================
 PUML_DIR = "./analisis/diagramas_puml"
 OUTPUT_DIR = "./analisis/diagramas_png"
-PLANTUML_SERVER = "http://www.plantuml.com/plantuml/png/"
+PLANTUML_SERVER = os.getenv("PLANTUML_SERVER", "http://www.plantuml.com/plantuml/png/")
+MAX_RETRIES = 3
+RETRY_DELAY = 1  # segundos
+TIMEOUT = 30  # segundos
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 # =================================================
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -29,7 +38,7 @@ def encode_puml(puml_content: str) -> str:
 
 def renderizar_puml_a_png(puml_path: str, output_dir: str) -> bool:
     """
-    Renderiza un archivo PlantUML a PNG.
+    Renderiza un archivo PlantUML a PNG con lógica de retry.
     
     Args:
         puml_path: Ruta del archivo .puml
@@ -47,22 +56,42 @@ def renderizar_puml_a_png(puml_path: str, output_dir: str) -> bool:
         base_name = Path(puml_path).stem
         output_path = os.path.join(output_dir, f"{base_name}.png")
         
-        # Codificar y hacer request al servidor
+        # Codificar y hacer request al servidor con retry
         encoded = encode_puml(puml_content)
         url = f"{PLANTUML_SERVER}{encoded}"
         
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        
-        # Guardar PNG
-        with open(output_path, 'wb') as f:
-            f.write(response.content)
-        
-        print(f"✅ Renderizado: {base_name}.png")
-        return True
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = requests.get(url, timeout=TIMEOUT)
+                response.raise_for_status()
+                
+                # Guardar PNG
+                with open(output_path, 'wb') as f:
+                    f.write(response.content)
+                
+                print(f"✅ Renderizado: {base_name}.png")
+                return True
+                
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout en intento {attempt + 1}/{MAX_RETRIES} para {base_name}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY * (2 ** attempt))  # Exponential backoff
+                else:
+                    raise
+                    
+            except requests.exceptions.ConnectionError as e:
+                logger.warning(f"Error de conexión en intento {attempt + 1}/{MAX_RETRIES} para {base_name}: {e}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY * (2 ** attempt))
+                else:
+                    raise
+                    
+            except requests.exceptions.HTTPError as e:
+                logger.error(f"Error HTTP al renderizar {base_name}: {e}")
+                raise  # No reintentar errores HTTP
         
     except Exception as e:
-        print(f"❌ Error al renderizar {puml_path}: {e}")
+        logger.error(f"❌ Error al renderizar {puml_path}: {e}")
         return False
 
 def main():
