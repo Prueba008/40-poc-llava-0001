@@ -19,17 +19,26 @@ class AppConfig:
 
     @classmethod
     def from_env(cls) -> "AppConfig":
+        """Construye la configuración usando defaults reales y variables de entorno.
+
+        Con ``slots=True`` los atributos de clase de la dataclass son descriptores,
+        por lo que no deben utilizarse como valores predeterminados. Se crea una
+        instancia base para recuperar los defaults efectivos.
+        """
+        defaults = cls()
         return cls(
-            ollama_url=os.getenv("OLLAMA_URL", cls.ollama_url),
-            ollama_model=os.getenv("OLLAMA_MODEL", cls.ollama_model),
-            images_dir=Path(os.getenv("IMAGES_DIR", str(cls.images_dir))),
-            output_dir=Path(os.getenv("OUTPUT_DIR", str(cls.output_dir))),
+            ollama_url=os.getenv("OLLAMA_URL", defaults.ollama_url).strip(),
+            ollama_model=os.getenv("OLLAMA_MODEL", defaults.ollama_model).strip(),
+            images_dir=Path(os.getenv("IMAGES_DIR", str(defaults.images_dir))),
+            output_dir=Path(os.getenv("OUTPUT_DIR", str(defaults.output_dir))),
             request_timeout_seconds=_positive_float(
-                "OLLAMA_TIMEOUT_SECONDS", cls.request_timeout_seconds
+                "OLLAMA_TIMEOUT_SECONDS", defaults.request_timeout_seconds
             ),
-            plantuml_server=os.getenv("PLANTUML_SERVER", cls.plantuml_server),
+            plantuml_server=os.getenv(
+                "PLANTUML_SERVER", defaults.plantuml_server
+            ).strip(),
             plantuml_timeout_seconds=_positive_float(
-                "PLANTUML_TIMEOUT_SECONDS", cls.plantuml_timeout_seconds
+                "PLANTUML_TIMEOUT_SECONDS", defaults.plantuml_timeout_seconds
             ),
         )
 
