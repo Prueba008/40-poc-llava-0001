@@ -5,7 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,7 @@ class PromptRepository:
         return connection
 
     @contextmanager
-    def _connection(self):
+    def _connection(self) -> Iterator[sqlite3.Connection]:
         connection = self._connect()
         try:
             yield connection
@@ -107,6 +107,7 @@ class PromptRepository:
                     """,
                     (prompt_id, tag),
                 )
+            _delete_orphan_tags(connection)
 
     def get(self, prompt_id: str) -> PromptRecord | None:
         with self._connection() as connection:
@@ -115,20 +116,7 @@ class PromptRepository:
             ).fetchone()
             if row is None:
                 return None
-            tags = tuple(
-                item["name"]
-                for item in connection.execute(
-                    """
-                    SELECT t.name
-                    FROM tags t
-                    JOIN prompt_tags pt ON pt.tag_id = t.id
-                    WHERE pt.prompt_id = ?
-                    ORDER BY t.name
-                    """,
-                    (prompt_id,),
-                )
-            )
-            return _to_record(row, tags)
+            return _to_record(row, _fetch_tags(connection, prompt_id))
 
     def search(self, query: str, limit: int = 10) -> list[PromptRecord]:
         if limit <= 0:
@@ -143,16 +131,43 @@ class PromptRepository:
                 """,
                 (f"%{query.strip()}%", limit),
             ).fetchall()
-            return [_to_record(row, ()) for row in rows]
+            return [
+                _to_record(row, _fetch_tags(connection, row["id"]))
+                for row in rows
+            ]
 
     def delete(self, prompt_id: str) -> bool:
         with self._connection() as connection:
             cursor = connection.execute("DELETE FROM prompts WHERE id = ?", (prompt_id,))
+            _delete_orphan_tags(connection)
             return cursor.rowcount > 0
 
     def count(self) -> int:
         with self._connection() as connection:
             return int(connection.execute("SELECT COUNT(*) FROM prompts").fetchone()[0])
+
+
+def _fetch_tags(connection: sqlite3.Connection, prompt_id: str) -> tuple[str, ...]:
+    return tuple(
+        item["name"]
+        for item in connection.execute(
+            """
+            SELECT t.name
+            FROM tags t
+            JOIN prompt_tags pt ON pt.tag_id = t.id
+            WHERE pt.prompt_id = ?
+            ORDER BY t.name
+            """,
+            (prompt_id,),
+        )
+    )
+
+
+def _delete_orphan_tags(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        "DELETE FROM tags WHERE NOT EXISTS "
+        "(SELECT 1 FROM prompt_tags pt WHERE pt.tag_id = tags.id)"
+    )
 
 
 def _to_record(row: sqlite3.Row, tags: tuple[str, ...]) -> PromptRecord:
