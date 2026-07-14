@@ -5,14 +5,28 @@ on:
     branches: [master, "agent/**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
       - run: python -m pip install --upgrade pip
       - run: pip install -r requirements-test.txt
-      - run: pytest --cov=analizar_arquitectura --cov=base_vectorial --cov=renderizar_puml --cov=config --cov-report=term-missing
+      - name: Run tests and coverage
+        run: >-
+          pytest -W error
+          --cov=analizar_arquitectura
+          --cov=base_vectorial
+          --cov=renderizar_puml
+          --cov=generar_pdf
+          --cov=config
+          --cov-report=term-missing
+          --cov-fail-under=70

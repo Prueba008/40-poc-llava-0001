@@ -12,7 +12,11 @@ def test_upsert_get_search_delete(tmp_path: Path):
     record = repository.get("p1")
     assert record is not None
     assert record.tags == ("ia", "uml")
-    assert repository.search("ARQUITECTURA")[0].id == "p1"
+
+    results = repository.search("ARQUITECTURA")
+    assert results[0].id == "p1"
+    assert results[0].tags == ("ia", "uml")
+
     assert repository.delete("p1") is True
     assert repository.delete("p1") is False
 
@@ -25,6 +29,7 @@ def test_upsert_replaces_tags(tmp_path: Path):
     assert record is not None
     assert record.text == "Dos"
     assert record.tags == ("c",)
+    assert repository.search("Dos")[0].tags == ("c",)
 
 
 def test_invalid_values(tmp_path: Path):
