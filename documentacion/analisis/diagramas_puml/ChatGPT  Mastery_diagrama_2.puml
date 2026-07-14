@@ -1,7 +1,0 @@
-@startuml
-
-:db_vectorial_for_prompts:
-
-* Base de datos vectorial que almacena información sobre prompts.
-
-@enduml
