@@ -100,6 +100,10 @@ La suite de pruebas busca verificar que el flujo:
 
 ### Ollama no responde
 
+instalar dependencias,
+hacer ollama pull gemma3 y ollama pull embeddinggemma,
+ejecutar python -m ollama_rag_local.cli ingest --file ...,
+consultar con python -m ollama_rag_local.cli ask --question ....
 Asegúrese de que el servicio esté ejecutándose:
 
 ```bash
