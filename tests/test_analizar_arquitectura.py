@@ -43,6 +43,7 @@ class FakeSession:
         self.error = error
         self.last_json = None
         self.last_timeout = None
+        self.closed = False
 
     def post(self, _url, *, json, timeout):
         self.last_json = json
@@ -50,6 +51,9 @@ class FakeSession:
         if self.error:
             raise self.error
         return self.response
+
+    def close(self):
+        self.closed = True
 
 
 def test_discover_images_filters_and_sorts(tmp_path: Path):
@@ -90,11 +94,38 @@ def test_query_ollama_validates_contract():
     assert result.response == "análisis"
     assert session.last_json["images"] == ["base64"]
     assert session.last_timeout == 10
+    assert session.closed is False
+
+
+def test_query_ollama_closes_owned_session(monkeypatch):
+    session = FakeSession(FakeResponse({"response": "ok"}))
+    monkeypatch.setattr("analizar_arquitectura.requests.Session", lambda: session)
+
+    query_ollama(
+        "prompt",
+        ollama_url="http://ollama",
+        model="llava",
+        timeout_seconds=10,
+    )
+
+    assert session.closed is True
 
 
 def test_query_ollama_rejects_invalid_json():
     session = FakeSession(FakeResponse(ValueError("bad json")))
     with pytest.raises(OllamaError, match="JSON inválido"):
+        query_ollama(
+            "prompt",
+            ollama_url="http://ollama",
+            model="llava",
+            timeout_seconds=10,
+            session=session,
+        )
+
+
+def test_query_ollama_rejects_non_object_json():
+    session = FakeSession(FakeResponse(["unexpected"]))
+    with pytest.raises(OllamaError, match="estructura JSON inválida"):
         query_ollama(
             "prompt",
             ollama_url="http://ollama",
