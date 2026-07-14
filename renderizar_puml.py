@@ -62,9 +62,17 @@ def render_puml_file(
     retries: int = 2,
     session: requests.Session | None = None,
 ) -> Path:
+    if retries < 0:
+        raise ValueError("retries debe ser mayor o igual que cero")
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds debe ser mayor que cero")
+    if not server_url.strip():
+        raise ValueError("server_url no puede estar vacío")
+
     source_path = Path(puml_path)
     source = source_path.read_text(encoding="utf-8")
-    if "@startuml" not in source.casefold() or "@enduml" not in source.casefold():
+    normalized = source.casefold()
+    if "@startuml" not in normalized or "@enduml" not in normalized:
         raise ValueError(f"PlantUML inválido: {source_path}")
 
     destination_dir = Path(output_dir)
@@ -72,19 +80,25 @@ def render_puml_file(
     destination = destination_dir / f"{source_path.stem}.png"
     url = f"{server_url.rstrip('/')}/{encode_puml(source)}"
     client = session or requests.Session()
+    owns_session = session is None
 
-    for attempt in range(retries + 1):
-        try:
-            response = client.get(url, timeout=timeout_seconds)
-            response.raise_for_status()
-            if not response.content.startswith(b"\x89PNG\r\n\x1a\n"):
-                raise RuntimeError("El servidor PlantUML no devolvió un PNG válido")
-            destination.write_bytes(response.content)
-            return destination
-        except (requests.Timeout, requests.ConnectionError):
-            if attempt >= retries:
-                raise
-            time.sleep(2**attempt)
+    try:
+        for attempt in range(retries + 1):
+            try:
+                response = client.get(url, timeout=timeout_seconds)
+                response.raise_for_status()
+                if not response.content.startswith(b"\x89PNG\r\n\x1a\n"):
+                    raise RuntimeError("El servidor PlantUML no devolvió un PNG válido")
+                destination.write_bytes(response.content)
+                return destination
+            except (requests.Timeout, requests.ConnectionError):
+                if attempt >= retries:
+                    raise
+                time.sleep(2**attempt)
+    finally:
+        if owns_session:
+            client.close()
+
     raise RuntimeError("No se pudo renderizar el diagrama")
 
 
