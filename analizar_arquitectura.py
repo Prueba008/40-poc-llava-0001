@@ -124,32 +124,40 @@ def query_ollama(
 ) -> OllamaResult:
     payload = build_ollama_payload(prompt, image_base64, model)
     client = session or requests.Session()
+    owns_session = session is None
     started = perf_counter()
     try:
-        response = client.post(ollama_url, json=payload, timeout=timeout_seconds)
-        response.raise_for_status()
-    except requests.Timeout as exc:
-        raise OllamaError(f"Ollama excedió el timeout de {timeout_seconds}s") from exc
-    except requests.HTTPError as exc:
-        status = exc.response.status_code if exc.response is not None else "desconocido"
-        raise OllamaError(f"Ollama respondió HTTP {status}") from exc
-    except requests.RequestException as exc:
-        raise OllamaError(f"No se pudo conectar con Ollama: {exc}") from exc
+        try:
+            response = client.post(ollama_url, json=payload, timeout=timeout_seconds)
+            response.raise_for_status()
+        except requests.Timeout as exc:
+            raise OllamaError(f"Ollama excedió el timeout de {timeout_seconds}s") from exc
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else "desconocido"
+            raise OllamaError(f"Ollama respondió HTTP {status}") from exc
+        except requests.RequestException as exc:
+            raise OllamaError(f"No se pudo conectar con Ollama: {exc}") from exc
 
-    try:
-        body = response.json()
-    except ValueError as exc:
-        raise OllamaError("Ollama devolvió JSON inválido") from exc
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise OllamaError("Ollama devolvió JSON inválido") from exc
 
-    text = body.get("response")
-    if not isinstance(text, str) or not text.strip():
-        raise OllamaError("Ollama no devolvió un campo 'response' válido")
+        if not isinstance(body, dict):
+            raise OllamaError("Ollama devolvió una estructura JSON inválida")
 
-    return OllamaResult(
-        response=text.strip(),
-        model=str(body.get("model") or model),
-        elapsed_ms=round((perf_counter() - started) * 1000),
-    )
+        text = body.get("response")
+        if not isinstance(text, str) or not text.strip():
+            raise OllamaError("Ollama no devolvió un campo 'response' válido")
+
+        return OllamaResult(
+            response=text.strip(),
+            model=str(body.get("model") or model),
+            elapsed_ms=round((perf_counter() - started) * 1000),
+        )
+    finally:
+        if owns_session:
+            client.close()
 
 
 def extract_puml_blocks(text: str) -> list[str]:
@@ -234,7 +242,7 @@ def run_pipeline(
     for image in discover_images(config.images_dir):
         try:
             succeeded.append(process_image(image, config, prompt=prompt, session=session))
-        except PipelineError as exc:
+        except (PipelineError, OSError) as exc:
             LOGGER.error("Falló %s: %s", image, exc)
             failed.append((image, str(exc)))
 
