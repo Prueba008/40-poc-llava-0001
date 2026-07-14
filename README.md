@@ -1,262 +1,121 @@
 # 40-poc-llava-0001
 
-Prueba de concepto para analizar imágenes de arquitectura de software utilizando LLaVA y gestionar prompts con una base de datos vectorial.
+Prueba de concepto para analizar imágenes de arquitectura de software con Ollama y LLaVA, generar resúmenes técnicos y extraer diagramas PlantUML.
 
-## Resumen del Proyecto
+## Resumen del proyecto
 
-Este proyecto demuestra un flujo de trabajo completo para:
-- Analizar imágenes de arquitectura de software usando LLaVA (modelo visión-lenguaje)
-- Extraer componentes arquitectónicos y generar diagramas PlantUML
-- Gestionar prompts en una base de datos vectorial basada en SQLite
-- Renderizar diagramas PlantUML a imágenes PNG
-- Generar documentación PDF a partir del análisis en markdown
+Este repositorio demuestra un flujo de trabajo completo para:
 
-## Estructura del Proyecto
+- Analizar imágenes de arquitectura con un modelo multimodal de visión y lenguaje.
+- Construir prompts orientados a componentes, seguridad, despliegue y escalabilidad.
+- Extraer bloques PlantUML desde la respuesta generada.
+- Guardar resultados en Markdown y archivos .puml.
+- Preparar una base para pruebas funcionales, de contrato e integración.
 
-```
-40-poc-llava-0001/
-├── base_vectorial.py          # Base de datos SQLite para gestión de prompts
-├── generar_pdf.py             # Generación de PDF desde markdown
-├── renderizar_puml.py         # Renderizado de PlantUML a PNG
-├── analizar_arquitectura.py   # Script de análisis de arquitectura
-├── requirements.txt           # Dependencias de Python
-├── analisis/
-│   ├── analisis_completo.md   # Análisis completo de arquitectura
-│   ├── diagramas_puml/        # Fuentes de diagramas PlantUML
-│   └── diagramas_png/         # Diagramas PNG renderizados
-├── prompts/
-│   ├── prompts_spec.md        # Especificaciones de prompts
-│   └── prompt-ollama-llava.txt
-├── documentacion/
-│   └── poc-ollama-llava-0001.docx
-└── prueba/
-    └── analisis_completo.md   # Salida de análisis de prueba
-```
+## Estructura del repositorio
+
+- [analizar_arquitectura.py](analizar_arquitectura.py): flujo principal de análisis y generación de artefactos.
+- [base_vectorial.py](base_vectorial.py): gestión de prompts con SQLite.
+- [renderizar_puml.py](renderizar_puml.py): renderizado de diagramas PlantUML a imágenes PNG.
+- [generar_pdf.py](generar_pdf.py): generación de PDF a partir del análisis Markdown.
+- [prompts](prompts): prompts y especificaciones de referencia.
+- [analisis](analisis): salida generada por el pipeline.
+- [imagenes](imagenes): imágenes de entrada para pruebas y demostraciones.
+
+## Requisitos previos
+
+- Python 3.13+
+- Ollama ejecutándose en localhost:11434
+- Modelo LLaVA instalado localmente
+- Git
 
 ## Instalación
 
-### Requisitos Previos
-
-- Python 3.13+
-- Ollama (para el modelo LLaVA)
-- Git
-
-### Configuración
-
-1. Clonar el repositorio:
-```bash
-git clone <repository-url>
-cd 40-poc-llava-0001
-```
-
-2. Crear entorno virtual:
 ```bash
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Linux/Mac
-```
-
-3. Instalar dependencias:
-```bash
+.venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-4. Descargar el modelo LLaVA con Ollama:
-```bash
 ollama pull llava
 ```
 
-## Uso
+## Uso básico
 
-### 1. Gestión de Base de Datos Vectorial
+### 1. Ejecutar el análisis
 
-El módulo `base_vectorial.py` proporciona una base de datos SQLite para almacenar y gestionar prompts.
-
-#### Inicializar la Base de Datos
-```python
-from base_vectorial import BaseVectorial
-
-base = BaseVectorial()
+```bash
+python analizar_arquitectura.py
 ```
 
-#### Agregar un Prompt
-```python
-base.add_prompt(
-    prompt_id="prompt_001",
-    text="Analizar arquitectura de software para plataformas con bases de datos masivas",
-    metadata={
-        "categoria": "arquitectura",
-        "prioridad": "alta"
-    },
-    tags=["software", "database", "architecture"]
-)
-```
+Esto procesa las imágenes encontradas en [imagenes](imagenes) y genera:
 
-#### Buscar Prompts
-```python
-results = base.search_prompts("arquitectura", n_results=5)
-for result in results:
-    print(f"ID: {result['id']}")
-    print(f"Texto: {result['text']}")
-    print(f"Metadatos: {result['metadata']}")
-```
+- [analisis/analisis_completo.md](analisis/analisis_completo.md)
+- [analisis/diagramas_puml](analisis/diagramas_puml)
 
-#### Obtener un Prompt Específico
-```python
-prompt = base.get_prompt("prompt_001")
-if prompt:
-    print(f"Tags: {prompt['tags']}")
-```
-
-#### Actualizar un Prompt
-```python
-base.update_prompt(
-    prompt_id="prompt_001",
-    text="Texto actualizado",
-    tags=["nuevos", "tags"]
-)
-```
-
-#### Eliminar un Prompt
-```python
-base.delete_prompt("prompt_001")
-```
-
-#### Listar Todos los Prompts
-```python
-prompts = base.list_all_prompts(limit=10)
-print(f"Total: {base.count_prompts()}")
-```
-
-### 2. Renderizar Diagramas PlantUML
-
-El script `renderizar_puml.py` convierte archivos PlantUML a imágenes PNG utilizando el servidor PlantUML.
+### 2. Renderizar diagramas PlantUML
 
 ```bash
 python renderizar_puml.py
 ```
 
-Este script:
-- Lee todos los archivos `.puml` de `./analisis/diagramas_puml/`
-- Los renderiza a PNG usando el servidor PlantUML
-- Guarda la salida en `./analisis/diagramas_png/`
-
-### 3. Generar Documentación PDF
-
-El script `generar_pdf.py` crea un documento PDF a partir del análisis en markdown y los diagramas.
+### 3. Generar PDF
 
 ```bash
 python generar_pdf.py
 ```
-Este script:
-- Lee `./analisis/analisis_completo.md`
-- Parsea las secciones markdown
-- Incluye los diagramas PNG correspondientes
-- Genera el PDF en `./documentacion/arquitectura_chatgpt_mastery.pdf`
 
-### 4. Análisis de Arquitectura
+## Estrategia de pruebas
 
-Utilice el notebook de Jupyter `40-poc-llava-0001.ipynb` para:
-- Analizar imágenes de arquitectura usando LLaVA
-- Extraer componentes arquitectónicos
-- Generar diagramas PlantUML
-- Almacenar resultados en la base de datos vectorial
+El proyecto está orientado a cubrir un pipeline funcional con pruebas deterministas, con mocks y de integración real contra Ollama.
 
-## Esquema de la Base de Datos
+### Pruebas rápidas
 
-La base de datos SQLite (`./data/prompts.db`) contiene tres tablas:
-
-### prompts
-- `id` (TEXT, PRIMARY KEY): Identificador único del prompt
-- `text` (TEXT): Contenido del texto del prompt
-- `metadata` (TEXT): Metadatos en JSON (categoría, prioridad, etc.)
-- `created_at` (TIMESTAMP): Timestamp de creación
-- `updated_at` (TIMESTAMP): Timestamp de última actualización
-
-### tags
-- `id` (INTEGER, PRIMARY KEY): ID del tag con auto-incremento
-- `name` (TEXT, UNIQUE): Nombre del tag
-
-### prompt_tags
-- `prompt_id` (TEXT, FOREIGN KEY): Referencia a prompts
-- `tag_id` (INTEGER, FOREIGN KEY): Referencia a tags
-- PRIMARY KEY (prompt_id, tag_id)
-
-## Configuración
-
-### Ruta de la Base de Datos
-Por defecto: `./data/prompts.db`
-
-Se puede personalizar:
-```python
-base = BaseVectorial(db_path="./ruta/personalizada/prompts.db")
-```
-
-### Servidor PlantUML
-Por defecto: `http://www.plantuml.com/plantuml/png/`
-
-Se puede modificar en `renderizar_puml.py`:
-```python
-PLANTUML_SERVER = "tu-servidor-personalizado"
-```
-
-## Dependencias
-
-Las dependencias clave incluyen:
-- `docling`: Procesamiento de documentos
-- `langchain-ollama`: Integración de LangChain con Ollama
-- `llava`: Modelo visión-lenguaje
-- `chromadb`: Base de datos vectorial (alternativa a SQLite)
-- `reportlab`: Generación de PDF
-- `requests`: Peticiones HTTP para renderizado PlantUML
-
-Consulte `requirements.txt` para la lista completa.
-
-## Flujo de Trabajo de Análisis de Arquitectura
-
-1. **Entrada de Imagen**: Proporcionar una imagen de diagrama de arquitectura
-2. **Análisis LLaVA**: Usar LLaVA para analizar la imagen y extraer componentes
-3. **Generación PlantUML**: Generar diagramas PlantUML para cada componente
-4. **Renderizado de Diagramas**: Convertir PlantUML a imágenes PNG
-5. **Almacenamiento en Base de Datos**: Guardar prompts y metadatos en la base de datos vectorial
-6. **Generación de PDF**: Crear documentación PDF completa
-
-## Salida de Ejemplo
-
-El proyecto genera:
-- **Diagramas PlantUML**: Diagramas de componentes para cada elemento arquitectónico
-- **Imágenes PNG**: Diagramas renderizados para documentación
-- **Reporte PDF**: Análisis completo de arquitectura con diagramas
-- **Registros de Base de Datos**: Almacenamiento de prompts buscables con tags y metadatos
-
-## Desarrollo
-
-### Ejecutar Pruebas
 ```bash
-python base_vectorial.py  # Ejecuta el ejemplo de uso
+pytest -m "unit or functional" -q
 ```
 
-### Agregar Nuevos Prompts
-Edite los prompts en `prompts/prompts_spec.md` y use la base de datos vectorial para almacenarlos.
+### Cobertura
 
-## Solución de Problemas
+```bash
+pytest -m "unit or functional" --cov=analizar_arquitectura --cov=base_vectorial --cov-report=term-missing --cov-report=html
+```
 
-### Problemas de Conexión con Ollama
-Asegúrese de que Ollama esté ejecutándose:
+### Integración real
+
+```bash
+pytest -m "integration and slow" -v
+```
+
+## Calidad esperada
+
+La suite de pruebas busca verificar que el flujo:
+
+- descubra imágenes correctamente,
+- codifique archivos a Base64,
+- construya el payload correcto para Ollama,
+- extraiga bloques PlantUML válidos,
+- genere Markdown y archivos .puml,
+- detecte alucinaciones y abstenciones cuando la imagen no aporta suficiente información.
+
+## Solución de problemas
+
+### Ollama no responde
+
+Asegúrese de que el servicio esté ejecutándose:
+
 ```bash
 ollama serve
 ```
 
-### Fallos en Renderizado PlantUML
-Verifique la conexión a internet (usa servidor PlantUML externo) o configure un servidor local.
+### Renderizado de PlantUML
 
-### Problemas de Bloqueo de Base de Datos
-Asegúrese de que solo un proceso acceda a la base de datos a la vez, o implemente un pool de conexiones adecuado.
+Verifique la conectividad con el servidor externo o configure una alternativa local si es necesario.
 
-## Licencia
+### Base de datos vectorial
 
-[Especifique su licencia aquí]
+Si aparecen problemas de acceso, asegúrese de que no haya otros procesos usando el mismo archivo de base de datos.
 
-## Contribuyendo
+## Notas importantes
 
-[Especifique las directrices de contribución aquí]
+- El flujo actual procesa archivos PNG, JPG, JPEG y GIF.
+- Si Ollama no está disponible o el modelo no responde correctamente, la ejecución debe reportar el fallo de forma explícita.
+- Para entornos locales, es recomendable mantener el modelo y el servicio Ollama en buen estado antes de ejecutar inferencia multimodal.
