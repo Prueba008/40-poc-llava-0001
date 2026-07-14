@@ -1,7 +1,0 @@
-@startuml
-
-:microservices_search:
-
-* Microservicios que gestionan la búsqueda y recuperación de datos relacionados con el curso.
-
-@enduml

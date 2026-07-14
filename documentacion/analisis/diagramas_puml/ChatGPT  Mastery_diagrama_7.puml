@@ -1,7 +1,0 @@
-@startuml
-
-:cdn_for_videos:
-
-* CDN que almacena y distribuye la información de videos a través de diferentes CDNs para garantizar una entrega rápida y confiable a los usuarios.
-
-@enduml

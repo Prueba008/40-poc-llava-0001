@@ -1,7 +1,0 @@
-@startuml
-
-:api_gateway:
-
-* Servidor para gestionar todas las solicitudes que ingresan al servicio.
-
-@enduml

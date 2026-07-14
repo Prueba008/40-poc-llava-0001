@@ -1,137 +1,281 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+from __future__ import annotations
 
-"""
-Script para analizar imágenes de arquitectura de software usando LLaVA (Ollama)
-y generar descripciones detalladas + diagramas PlantUML.
-Soporta PNG, JPG, JPEG y GIF (primer fotograma en caso de animación).
-"""
-
-import os
+import argparse
 import base64
+import logging
 import re
-import requests
-import glob
+from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
+from typing import Any, Iterable
 
-# ================= CONFIGURACIÓN =================
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llava"                     # Asegurar que está descargado: ollama pull llava
-IMAGES_DIR = "./imagenes"            # Directorio con las imágenes a analizar
-OUTPUT_DIR = "./analisis"            # Directorio donde se guardarán los resultados
-# =================================================
+import requests
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-puml_dir = os.path.join(OUTPUT_DIR, "diagramas_puml")
-os.makedirs(puml_dir, exist_ok=True)
+from config import AppConfig
 
-def encode_image(image_path):
-    """Convierte una imagen a base64."""
-    with open(image_path, "rb") as f:
-        return base64.b64encode(f.read()).decode('utf-8')
+LOGGER = logging.getLogger(__name__)
+SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif"}
 
-def query_ollama(prompt, image_base64=None):
-    """Envía una consulta a Ollama (modelo multimodal) y devuelve la respuesta."""
-    payload = {
-        "model": MODEL,
+BASE_PROMPT = """\
+Actúa como ingeniero de software senior. Analiza únicamente la información visible
+en la imagen. Separa claramente: (1) elementos observados, (2) inferencias y
+(3) recomendaciones. Si la imagen no contiene información suficiente, indícalo y
+no inventes componentes, cifras ni relaciones.
+
+Entrega:
+1. Resumen técnico.
+2. Componentes y responsabilidades.
+3. Integraciones y flujo de datos.
+4. Seguridad, despliegue, escalabilidad y observabilidad.
+5. Riesgos, supuestos y datos faltantes.
+6. Diagramas PlantUML válidos, cada uno en un bloque ```plantuml```: componentes,
+   secuencia, despliegue y flujo de datos. Cada bloque debe incluir @startuml y
+   @enduml.
+"""
+
+
+class PipelineError(RuntimeError):
+    """Error base del pipeline."""
+
+
+class OllamaError(PipelineError):
+    """Error de comunicación o contrato con Ollama."""
+
+
+class InvalidImageError(PipelineError):
+    """La imagen no puede procesarse."""
+
+
+@dataclass(frozen=True, slots=True)
+class OllamaResult:
+    response: str
+    model: str
+    elapsed_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class ImageAnalysis:
+    image_path: Path
+    response: str
+    generated_puml_files: tuple[Path, ...]
+    elapsed_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class BatchResult:
+    succeeded: tuple[ImageAnalysis, ...]
+    failed: tuple[tuple[Path, str], ...]
+    markdown_file: Path | None
+
+    @property
+    def partial(self) -> bool:
+        return bool(self.succeeded and self.failed)
+
+
+def discover_images(images_dir: str | Path) -> list[Path]:
+    directory = Path(images_dir)
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix.casefold() in SUPPORTED_IMAGE_EXTENSIONS
+    )
+
+
+def encode_image(image_path: str | Path) -> str:
+    path = Path(image_path)
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        raise InvalidImageError(f"No se pudo leer la imagen {path}: {exc}") from exc
+    if not content:
+        raise InvalidImageError(f"La imagen {path} está vacía")
+    return base64.b64encode(content).decode("ascii")
+
+
+def build_ollama_payload(
+    prompt: str,
+    image_base64: str | None,
+    model: str,
+) -> dict[str, Any]:
+    if not prompt.strip():
+        raise ValueError("El prompt no puede estar vacío")
+    if not model.strip():
+        raise ValueError("El modelo no puede estar vacío")
+    payload: dict[str, Any] = {
+        "model": model,
         "prompt": prompt,
-        "stream": False
+        "stream": False,
     }
     if image_base64:
         payload["images"] = [image_base64]
+    return payload
+
+
+def query_ollama(
+    prompt: str,
+    image_base64: str | None = None,
+    *,
+    ollama_url: str,
+    model: str,
+    timeout_seconds: float,
+    session: requests.Session | None = None,
+) -> OllamaResult:
+    payload = build_ollama_payload(prompt, image_base64, model)
+    client = session or requests.Session()
+    started = perf_counter()
+    try:
+        response = client.post(ollama_url, json=payload, timeout=timeout_seconds)
+        response.raise_for_status()
+    except requests.Timeout as exc:
+        raise OllamaError(f"Ollama excedió el timeout de {timeout_seconds}s") from exc
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "desconocido"
+        raise OllamaError(f"Ollama respondió HTTP {status}") from exc
+    except requests.RequestException as exc:
+        raise OllamaError(f"No se pudo conectar con Ollama: {exc}") from exc
 
     try:
-        response = requests.post(OLLAMA_URL, json=payload)
-        response.raise_for_status()
-        return response.json()["response"]
-    except Exception as e:
-        print(f"Error en consulta a Ollama: {e}")
-        return ""
+        body = response.json()
+    except ValueError as exc:
+        raise OllamaError("Ollama devolvió JSON inválido") from exc
 
-def extract_puml_blocks(text):
-    """Extrae bloques de código PlantUML (```puml ... ``` o ```plantuml ... ```)."""
-    pattern = r"```(?:puml|plantuml)\n(.*?)```"
-    return re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
+    text = body.get("response")
+    if not isinstance(text, str) or not text.strip():
+        raise OllamaError("Ollama no devolvió un campo 'response' válido")
 
-# Prompt detallado (en español) que pide el análisis completo
-BASE_PROMPT = """
-Extraer de la imagen adjunta como ingeniero de software Analizar la imagen adjunta para deducir y diseñar la arquitectura técnica necesaria para soportar el producto digital que se promociona (un curso/plataforma con bases de datos masivas).
+    return OllamaResult(
+        response=text.strip(),
+        model=str(body.get("model") or model),
+        elapsed_ms=round((perf_counter() - started) * 1000),
+    )
 
-Instrucciones de formato:
 
-Proporciona una explicación técnica para cada punto.
+def extract_puml_blocks(text: str) -> list[str]:
+    pattern = re.compile(
+        r"```(?:puml|plantuml)\s*\r?\n(.*?)```",
+        re.IGNORECASE | re.DOTALL,
+    )
+    return [match.strip() for match in pattern.findall(text)]
 
-Genera código PlantUML válido encerrado en bloques de código independientes para cada diagrama.
 
-No utilices texto genérico; basa tus deducciones en los números y activos específicos de la imagen (ej. "38,000+ AI Tools", "40,000+ Prompts").
+def validate_puml_block(block: str) -> None:
+    normalized = block.casefold()
+    start = normalized.find("@startuml")
+    end = normalized.find("@enduml")
+    if start < 0 or end < 0 or start >= end:
+        raise PipelineError("Bloque PlantUML inválido: faltan @startuml/@enduml")
+    if "```" in block:
+        raise PipelineError("Bloque PlantUML inválido: contiene Markdown anidado")
 
-Análisis Requerido:
 
-Componentes y Servicios: Desglosa la arquitectura necesaria (API Gateways, Microservicios de Búsqueda, CMS para videos, Motores de Recomendación).
+def write_puml_blocks(
+    image_path: str | Path,
+    blocks: Iterable[str],
+    output_dir: str | Path,
+) -> list[Path]:
+    target = Path(output_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    generated: list[Path] = []
+    for index, block in enumerate(blocks, start=1):
+        validate_puml_block(block)
+        path = target / f"{Path(image_path).stem}_diagrama_{index}.puml"
+        path.write_text(block.strip() + "\n", encoding="utf-8")
+        generated.append(path)
+    return generated
 
-Stack Tecnológico: Deduce tecnologías específicas (Bases de datos Vectoriales para prompts, NoSQL para el catálogo, CDNs para el contenido de video).
 
-Patrones de Diseño: Justifica el uso de Microservicios, CQRS (para separar lectura de catálogos y escritura de usuarios) y Event-Driven.
+def process_image(
+    image_path: str | Path,
+    config: AppConfig,
+    *,
+    prompt: str = BASE_PROMPT,
+    session: requests.Session | None = None,
+) -> ImageAnalysis:
+    path = Path(image_path)
+    encoded = encode_image(path)
+    result = query_ollama(
+        prompt,
+        encoded,
+        ollama_url=config.ollama_url,
+        model=config.ollama_model,
+        timeout_seconds=config.request_timeout_seconds,
+        session=session,
+    )
+    blocks = extract_puml_blocks(result.response)
+    generated = write_puml_blocks(
+        path,
+        blocks,
+        config.output_dir / "diagramas_puml",
+    )
+    return ImageAnalysis(path, result.response, tuple(generated), result.elapsed_ms)
 
-Seguridad y Despliegue: Define estrategias de OAuth2/JWT para el acceso vía QR y una infraestructura en Kubernetes sobre AWS/GCP.
 
-Escalabilidad: Explica cómo manejarías picos de tráfico masivos tras el escaneo del código QR.
+def write_analysis(output_path: str | Path, analyses: Iterable[ImageAnalysis]) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sections = ["# Análisis de Arquitectura de Software\n"]
+    for analysis in analyses:
+        sections.append(f"## Análisis de {analysis.image_path.name}\n\n{analysis.response}\n")
+    path.write_text("\n".join(sections), encoding="utf-8")
+    return path
 
-Diagramas PlantUML solicitados:
 
-A. Diagrama de Componentes: Detallando la lógica interna.
+def run_pipeline(
+    config: AppConfig,
+    *,
+    prompt: str = BASE_PROMPT,
+    session: requests.Session | None = None,
+) -> BatchResult:
+    succeeded: list[ImageAnalysis] = []
+    failed: list[tuple[Path, str]] = []
 
-B. Diagrama de Secuencia: Flujo desde el escaneo del QR hasta la entrega del prompt/recurso.
+    for image in discover_images(config.images_dir):
+        try:
+            succeeded.append(process_image(image, config, prompt=prompt, session=session))
+        except PipelineError as exc:
+            LOGGER.error("Falló %s: %s", image, exc)
+            failed.append((image, str(exc)))
 
-C. Diagrama de Despliegue: Nodos, contenedores y balanceadores de carga.
+    markdown = None
+    if succeeded:
+        markdown = write_analysis(config.output_dir / "analisis_completo.md", succeeded)
+    return BatchResult(tuple(succeeded), tuple(failed), markdown)
 
-D. Diagrama de Flujo de Datos: Movimiento de la información desde las DBs hacia el usuario final.
-"""
 
-def main():
-    # Buscar imágenes en el directorio (incluyendo GIF)
-    image_files = (glob.glob(os.path.join(IMAGES_DIR, "*.png")) +
-                   glob.glob(os.path.join(IMAGES_DIR, "*.jpg")) +
-                   glob.glob(os.path.join(IMAGES_DIR, "*.jpeg")) +
-                   glob.glob(os.path.join(IMAGES_DIR, "*.gif")))
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Analiza imágenes con Ollama/LLaVA")
+    parser.add_argument("--images-dir", type=Path)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--model")
+    parser.add_argument("--ollama-url")
+    return parser
 
-    if not image_files:
-        print(f"No se encontraron imágenes en {IMAGES_DIR}")
-        return
 
-    all_analyses = []
+def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    args = _build_parser().parse_args()
+    base = AppConfig.from_env()
+    config = AppConfig(
+        ollama_url=args.ollama_url or base.ollama_url,
+        ollama_model=args.model or base.ollama_model,
+        images_dir=args.images_dir or base.images_dir,
+        output_dir=args.output_dir or base.output_dir,
+        request_timeout_seconds=base.request_timeout_seconds,
+        plantuml_server=base.plantuml_server,
+        plantuml_timeout_seconds=base.plantuml_timeout_seconds,
+    )
+    result = run_pipeline(config)
+    if not result.succeeded and not result.failed:
+        LOGGER.warning("No se encontraron imágenes en %s", config.images_dir)
+        return 2
+    if result.failed:
+        LOGGER.warning("Ejecución con %d error(es)", len(result.failed))
+        return 1
+    LOGGER.info("Procesadas %d imagen(es)", len(result.succeeded))
+    return 0
 
-    for img_path in image_files:
-        print(f"Procesando {img_path}...")
-        if img_path.lower().endswith('.gif'):
-            print("  Nota: Los GIF animados se procesarán como imagen estática (primer fotograma).")
-        img_b64 = encode_image(img_path)
-        response = query_ollama(BASE_PROMPT, img_b64)
-
-        if response:
-            # Agregar al análisis global
-            all_analyses.append(f"## Análisis de {os.path.basename(img_path)}\n\n{response}\n\n")
-
-            # Extraer y guardar diagramas PUML individuales
-            puml_blocks = extract_puml_blocks(response)
-            for i, block in enumerate(puml_blocks):
-                base_name = Path(img_path).stem
-                filename = f"{base_name}_diagrama_{i+1}.puml"
-                filepath = os.path.join(puml_dir, filename)
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(block.strip())
-                print(f"  Guardado diagrama: {filename}")
-        else:
-            print(f"  No se obtuvo respuesta para {img_path}")
-
-    # Guardar el análisis completo en un archivo Markdown
-    output_md = os.path.join(OUTPUT_DIR, "analisis_completo.md")
-    with open(output_md, "w", encoding="utf-8") as f:
-        f.write("# Análisis de Arquitectura de Software\n\n")
-        f.writelines(all_analyses)
-
-    print(f"\n✅ Análisis completado. Revisa {output_md}")
-    print(f"📁 Diagramas PUML guardados en {puml_dir}")
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,1 +1,12 @@
-auxi/ChatGPT  Mastery.png
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+*.py[cod]
+.env
+data/*.db
+analisis/analisis_completo.md
+analisis/diagramas_puml/*.puml
+analisis/diagramas_png/*.png
+documentacion/*.pdf
